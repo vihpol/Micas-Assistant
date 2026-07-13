@@ -1,3 +1,7 @@
+import json
+import os
+import urllib.error
+import urllib.request
 from typing import Literal
 
 from fastapi import FastAPI
@@ -6,6 +10,12 @@ from pydantic import BaseModel
 
 
 Category = Literal["HR", "Operations", "Marketing"]
+AGENT_NAMES = [
+    "Analyzer Agent",
+    "Specialist Agent",
+    "Writer Agent",
+    "Reviewer Agent",
+]
 
 
 class AnalyzeRequest(BaseModel):
@@ -128,6 +138,142 @@ MOCK_ANALYSIS: dict[Category, AnalyzeResponse] = {
     ),
 }
 
+AGENT_PROMPTS = {
+    "Analyzer Agent": "Summarize the request and identify the main objective in one concise sentence.",
+    "Specialist Agent": "Create a practical plan for the department in two concise sentences.",
+    "Writer Agent": "Draft a short professional message the team could send or adapt.",
+    "Reviewer Agent": "Review the plan and return four checklist items separated by semicolons.",
+}
+
+
+def _fallback_response(category: Category, request: str) -> AnalyzeResponse:
+    mock_response = MOCK_ANALYSIS[category].model_copy(deep=True)
+    mock_response.summary = f"{mock_response.summary} Request received: {request}"
+    return mock_response
+
+
+def _extract_response_text(data: dict) -> str:
+    if isinstance(data.get("output_text"), str):
+        return data["output_text"].strip()
+
+    output_parts = []
+    for output_item in data.get("output", []):
+        for content_item in output_item.get("content", []):
+            text = content_item.get("text")
+            if isinstance(text, str):
+                output_parts.append(text)
+
+    return " ".join(output_parts).strip()
+
+
+def _call_llm_agent(
+    *,
+    agent: str,
+    category: Category,
+    request: str,
+    context: list[AgentTraceItem],
+) -> str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    prior_context = "\n".join(
+        f"{item.agent}: {item.output}" for item in context
+    ) or "No previous agent output yet."
+    prompt = (
+        f"You are the {agent} in a {category} assistant workflow.\n"
+        f"Department: {category}\n"
+        f"User request: {request}\n"
+        f"Previous agent output:\n{prior_context}\n\n"
+        f"Task: {AGENT_PROMPTS[agent]}\n"
+        "Keep the output specific, useful, and under 60 words."
+    )
+    payload = {
+        "model": model,
+        "input": [
+            {
+                "role": "system",
+                "content": "You are a concise internal operations assistant for MICAS.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "max_output_tokens": 220,
+    }
+    request_data = json.dumps(payload).encode("utf-8")
+    http_request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=request_data,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(http_request, timeout=30) as response:
+        response_data = json.loads(response.read().decode("utf-8"))
+
+    text = _extract_response_text(response_data)
+    if not text:
+        raise RuntimeError(f"{agent} returned an empty response")
+
+    return text
+
+
+def _extract_checklist(reviewer_output: str, fallback: list[str]) -> list[str]:
+    normalized = reviewer_output.replace("\n", ";")
+    items = [
+        item.strip(" -0123456789.)")
+        for item in normalized.split(";")
+        if item.strip(" -0123456789.)")
+    ]
+
+    return items[:4] if len(items) >= 3 else fallback
+
+
+def _run_llm_workflow(category: Category, request: str) -> AnalyzeResponse:
+    agent_trace: list[AgentTraceItem] = []
+
+    for agent in AGENT_NAMES:
+        output = _call_llm_agent(
+            agent=agent,
+            category=category,
+            request=request,
+            context=agent_trace,
+        )
+        agent_trace.append(AgentTraceItem(agent=agent, output=output))
+
+    fallback = MOCK_ANALYSIS[category]
+    return AnalyzeResponse(
+        summary=agent_trace[0].output,
+        generated_plan=agent_trace[1].output,
+        checklist=_extract_checklist(agent_trace[3].output, fallback.checklist),
+        draft_message=agent_trace[2].output,
+        agent_trace=agent_trace,
+    )
+
+
+def run_hr_workflow(request: str) -> AnalyzeResponse:
+    try:
+        return _run_llm_workflow("HR", request)
+    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+        return _fallback_response("HR", request)
+
+
+def run_operations_workflow(request: str) -> AnalyzeResponse:
+    try:
+        return _run_llm_workflow("Operations", request)
+    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+        return _fallback_response("Operations", request)
+
+
+def run_marketing_workflow(request: str) -> AnalyzeResponse:
+    try:
+        return _run_llm_workflow("Marketing", request)
+    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+        return _fallback_response("Marketing", request)
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -136,6 +282,9 @@ def health() -> dict[str, str]:
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
-    mock_response = MOCK_ANALYSIS[payload.category].model_copy(deep=True)
-    mock_response.summary = f"{mock_response.summary} Request received: {payload.request}"
-    return mock_response
+    workflows = {
+        "HR": run_hr_workflow,
+        "Operations": run_operations_workflow,
+        "Marketing": run_marketing_workflow,
+    }
+    return workflows[payload.category](payload.request)

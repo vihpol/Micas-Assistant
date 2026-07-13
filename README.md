@@ -10,6 +10,15 @@ Minimal full-stack internal dashboard scaffold.
 
 ## Setup
 
+Optional LLM configuration:
+
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+export OPENAI_MODEL="gpt-4.1-mini"
+```
+
+If `OPENAI_API_KEY` is not set, the backend automatically falls back to mock workflow outputs.
+
 ```bash
 docker compose up --build
 ```
@@ -23,6 +32,7 @@ The frontend calls the backend through Next.js rewrites:
 - Docker internal target: `http://backend:8000/health`
 
 `docker-compose.yml` passes `BACKEND_URL=http://backend:8000` to the frontend at build time and runtime so `docker compose up --build` works from a clean checkout.
+It also passes `OPENAI_API_KEY` and `OPENAI_MODEL` into the backend container for the LLM workflow.
 
 ## Test The API
 
