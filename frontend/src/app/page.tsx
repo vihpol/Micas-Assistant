@@ -169,7 +169,7 @@ export default function Home() {
                 onClick={() => void runAgents()}
                 type="button"
               >
-                {loading ? "Running..." : "Run AI Agents"}
+                {loading ? "Analyzing..." : "Generate Plan"}
               </button>
             </div>
 
