@@ -6,28 +6,29 @@ Minimal full-stack internal dashboard scaffold.
 
 - Frontend: Next.js, TypeScript, Tailwind CSS
 - Backend: FastAPI
-- Local LLM runtime: Ollama
 - Runtime: Docker Compose
 
 ## Setup
 
-Optional OpenAI configuration:
+Create an environment file:
 
 ```bash
-export OPENAI_API_KEY="your_api_key_here"
-export OPENAI_MODEL="gpt-4.1-mini"
+cp .env.example .env
 ```
 
-If `OPENAI_API_KEY` is set, the backend uses OpenAI first. If it is not set, the backend uses Ollama through `OLLAMA_BASE_URL`. If Ollama is unavailable or the model is missing, the backend falls back to mock workflow outputs.
+Optional: add your OpenAI API key to `.env`.
+
+```env
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Security note: never put `OPENAI_API_KEY` in frontend code or expose it with a `NEXT_PUBLIC_` variable. The frontend calls FastAPI only; FastAPI reads `OPENAI_API_KEY` from the backend environment.
+
+Start the app:
 
 ```bash
 docker compose up --build
-```
-
-Pull the default local Ollama model:
-
-```bash
-docker compose exec ollama ollama pull tinyllama
 ```
 
 - Frontend: http://localhost:3000
@@ -39,7 +40,9 @@ The frontend calls the backend through Next.js rewrites:
 - Docker internal target: `http://backend:8000/health`
 
 `docker-compose.yml` passes `BACKEND_URL=http://backend:8000` to the frontend at build time and runtime so `docker compose up --build` works from a clean checkout.
-It also passes `OPENAI_API_KEY`, `OPENAI_MODEL`, `OLLAMA_BASE_URL`, and `OLLAMA_MODEL` into the backend container for the agent workflow.
+It passes `OPENAI_API_KEY` and `OPENAI_MODEL` into the backend container only.
+
+If `OPENAI_API_KEY` is set, the backend calls the OpenAI API. If it is missing, the backend returns mock workflow outputs with the same response shape.
 
 ## Test The API
 
@@ -49,7 +52,7 @@ Health check:
 curl http://localhost:8000/health
 ```
 
-Mock agent analysis:
+Agent analysis:
 
 ```bash
 curl -X POST http://localhost:8000/analyze \

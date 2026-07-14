@@ -18,8 +18,6 @@ type AnalyzeResult = {
 };
 
 const sections: Category[] = ["HR", "Operations", "Marketing"];
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-const analyzeUrl = apiBaseUrl ? `${apiBaseUrl}/analyze` : "/api/analyze";
 
 export default function Home() {
   const [connected, setConnected] = useState(false);
@@ -62,7 +60,7 @@ export default function Home() {
     setCopied(false);
 
     try {
-      const response = await fetch(analyzeUrl, {
+      const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
