@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Literal
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://192.168.1.174:3010",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -166,7 +168,7 @@ def _extract_response_text(data: dict) -> str:
     return " ".join(output_parts).strip()
 
 
-def _call_llm_agent(
+def _call_openai_agent(
     *,
     agent: str,
     category: Category,
@@ -221,11 +223,198 @@ def _call_llm_agent(
     return text
 
 
+def _call_ollama_agent(
+    *,
+    agent: str,
+    category: Category,
+    request: str,
+    context: list[AgentTraceItem],
+) -> str:
+    base_url = os.getenv("OLLAMA_BASE_URL")
+    if not base_url:
+        raise RuntimeError("OLLAMA_BASE_URL is not configured")
+
+    model = os.getenv("OLLAMA_MODEL", "tinyllama:latest")
+    prior_context = "\n".join(
+        f"{item.agent}: {item.output}" for item in context
+    ) or "No previous agent output yet."
+    prompt = (
+        "You are a concise internal operations assistant for MICAS.\n"
+        f"You are the {agent} in a {category} assistant workflow.\n"
+        f"Department: {category}\n"
+        f"User request: {request}\n"
+        f"Previous agent output:\n{prior_context}\n\n"
+        f"Task: {AGENT_PROMPTS[agent]}\n"
+        "Keep the output specific, useful, and under 60 words."
+    )
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.3,
+            "num_predict": 80,
+        },
+    }
+    request_data = json.dumps(payload).encode("utf-8")
+    http_request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/generate",
+        data=request_data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(http_request, timeout=180) as response:
+        response_data = json.loads(response.read().decode("utf-8"))
+
+    text = str(response_data.get("response", "")).strip()
+    if not text:
+        raise RuntimeError(f"{agent} returned an empty Ollama response")
+
+    return text
+
+
+def _call_ollama_coordinator(category: Category, request: str) -> str:
+    base_url = os.getenv("OLLAMA_BASE_URL")
+    if not base_url:
+        raise RuntimeError("OLLAMA_BASE_URL is not configured")
+
+    model = os.getenv("OLLAMA_MODEL", "tinyllama:latest")
+    prompt = (
+        "You are running a MICAS internal assistant workflow. "
+        "Simulate four agents. Answer the user's request directly. "
+        "Do not mention formatting rules, labels, or word counts.\n"
+        f"Department: {category}\n"
+        f"User request: {request}\n\n"
+        "Complete these four lines with useful content:\n"
+        "ANALYZER: identify the main business need\n"
+        "SPECIALIST: recommend the next practical steps\n"
+        "WRITER: write a short team message\n"
+        "REVIEWER: checklist item; checklist item; checklist item; checklist item"
+    )
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.2,
+            "num_predict": 140,
+        },
+    }
+    request_data = json.dumps(payload).encode("utf-8")
+    http_request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/generate",
+        data=request_data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(http_request, timeout=240) as response:
+        response_data = json.loads(response.read().decode("utf-8"))
+
+    text = str(response_data.get("response", "")).strip()
+    if not text:
+        raise RuntimeError("Ollama coordinator returned an empty response")
+
+    return text
+
+
+def _parse_labeled_output(text: str) -> dict[str, str]:
+    labels = {
+        "ANALYZER": "",
+        "SPECIALIST": "",
+        "WRITER": "",
+        "REVIEWER": "",
+    }
+    current_label = ""
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        upper_line = line.upper()
+        matched_label = next(
+            (label for label in labels if upper_line.startswith(f"{label}:")),
+            "",
+        )
+        if matched_label:
+            current_label = matched_label
+            labels[current_label] = line.split(":", 1)[1].strip()
+        elif current_label:
+            labels[current_label] = f"{labels[current_label]} {line}".strip()
+
+    return labels
+
+
+def _clean_agent_output(text: str) -> str:
+    return text.strip().strip('"').strip("'").strip()
+
+
+def _run_ollama_workflow(category: Category, request: str) -> AnalyzeResponse:
+    raw_output = _call_ollama_coordinator(category, request)
+    parsed = _parse_labeled_output(raw_output)
+    fallback = MOCK_ANALYSIS[category]
+    raw_output = _clean_agent_output(raw_output)
+    if raw_output and not any(parsed.values()):
+        return AnalyzeResponse(
+            summary=raw_output,
+            generated_plan=fallback.generated_plan,
+            checklist=fallback.checklist,
+            draft_message=fallback.draft_message,
+            agent_trace=[
+                AgentTraceItem(agent="Analyzer Agent", output=raw_output),
+                AgentTraceItem(
+                    agent="Specialist Agent", output=fallback.generated_plan
+                ),
+                AgentTraceItem(agent="Writer Agent", output=fallback.draft_message),
+                AgentTraceItem(
+                    agent="Reviewer Agent", output=fallback.agent_trace[3].output
+                ),
+            ],
+        )
+
+    summary = _clean_agent_output(parsed["ANALYZER"]) or fallback.summary
+    generated_plan = _clean_agent_output(parsed["SPECIALIST"]) or fallback.generated_plan
+    draft_message = _clean_agent_output(parsed["WRITER"]) or fallback.draft_message
+    reviewer_output = (
+        _clean_agent_output(parsed["REVIEWER"]) or fallback.agent_trace[3].output
+    )
+
+    return AnalyzeResponse(
+        summary=summary,
+        generated_plan=generated_plan,
+        checklist=_extract_checklist(reviewer_output, fallback.checklist),
+        draft_message=draft_message,
+        agent_trace=[
+            AgentTraceItem(agent="Analyzer Agent", output=summary),
+            AgentTraceItem(agent="Specialist Agent", output=generated_plan),
+            AgentTraceItem(agent="Writer Agent", output=draft_message),
+            AgentTraceItem(agent="Reviewer Agent", output=reviewer_output),
+        ],
+    )
+
+
+def _call_openai_workflow_agent(
+    *,
+    agent: str,
+    category: Category,
+    request: str,
+    context: list[AgentTraceItem],
+) -> str:
+    return _call_openai_agent(
+        agent=agent,
+        category=category,
+        request=request,
+        context=context,
+    )
+
+
 def _extract_checklist(reviewer_output: str, fallback: list[str]) -> list[str]:
     normalized = reviewer_output.replace("\n", ";")
     items = [
-        item.strip(" -0123456789.)")
-        for item in normalized.split(";")
+        _clean_agent_output(item.strip(" -0123456789.)"))
+        for item in re.split(r";|(?:^|\s+)\d+[.)]\s+", normalized)
         if item.strip(" -0123456789.)")
     ]
 
@@ -233,10 +422,13 @@ def _extract_checklist(reviewer_output: str, fallback: list[str]) -> list[str]:
 
 
 def _run_llm_workflow(category: Category, request: str) -> AnalyzeResponse:
+    if not os.getenv("OPENAI_API_KEY"):
+        return _run_ollama_workflow(category, request)
+
     agent_trace: list[AgentTraceItem] = []
 
     for agent in AGENT_NAMES:
-        output = _call_llm_agent(
+        output = _call_openai_workflow_agent(
             agent=agent,
             category=category,
             request=request,
@@ -257,21 +449,36 @@ def _run_llm_workflow(category: Category, request: str) -> AnalyzeResponse:
 def run_hr_workflow(request: str) -> AnalyzeResponse:
     try:
         return _run_llm_workflow("HR", request)
-    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+    except (
+        RuntimeError,
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+    ):
         return _fallback_response("HR", request)
 
 
 def run_operations_workflow(request: str) -> AnalyzeResponse:
     try:
         return _run_llm_workflow("Operations", request)
-    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+    except (
+        RuntimeError,
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+    ):
         return _fallback_response("Operations", request)
 
 
 def run_marketing_workflow(request: str) -> AnalyzeResponse:
     try:
         return _run_llm_workflow("Marketing", request)
-    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+    except (
+        RuntimeError,
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+    ):
         return _fallback_response("Marketing", request)
 
 
