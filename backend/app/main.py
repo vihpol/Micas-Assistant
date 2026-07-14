@@ -4,7 +4,7 @@ import urllib.error
 import urllib.request
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -278,39 +278,15 @@ def _run_llm_workflow(category: Category, request: str) -> AnalyzeResponse:
 
 
 def run_hr_workflow(request: str) -> AnalyzeResponse:
-    try:
-        return _run_llm_workflow("HR", request)
-    except (
-        RuntimeError,
-        urllib.error.URLError,
-        urllib.error.HTTPError,
-        TimeoutError,
-    ):
-        return _fallback_response("HR", request)
+    return _run_llm_workflow("HR", request)
 
 
 def run_operations_workflow(request: str) -> AnalyzeResponse:
-    try:
-        return _run_llm_workflow("Operations", request)
-    except (
-        RuntimeError,
-        urllib.error.URLError,
-        urllib.error.HTTPError,
-        TimeoutError,
-    ):
-        return _fallback_response("Operations", request)
+    return _run_llm_workflow("Operations", request)
 
 
 def run_marketing_workflow(request: str) -> AnalyzeResponse:
-    try:
-        return _run_llm_workflow("Marketing", request)
-    except (
-        RuntimeError,
-        urllib.error.URLError,
-        urllib.error.HTTPError,
-        TimeoutError,
-    ):
-        return _fallback_response("Marketing", request)
+    return _run_llm_workflow("Marketing", request)
 
 
 @app.get("/health")
@@ -325,4 +301,15 @@ def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         "Operations": run_operations_workflow,
         "Marketing": run_marketing_workflow,
     }
-    return workflows[payload.category](payload.request)
+    try:
+        return workflows[payload.category](payload.request)
+    except (
+        RuntimeError,
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+    ) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI request failed. Check API quota, billing, and model access.",
+        ) from exc
