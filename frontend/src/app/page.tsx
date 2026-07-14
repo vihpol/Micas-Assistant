@@ -95,43 +95,15 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen bg-[#eef4f3]">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-[#12324a] bg-[#07192f] px-5 py-6 text-white">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase text-[#7dd3c7]">
-            MICAS
-          </p>
-          <h1 className="mt-1 text-xl font-semibold text-white">
-            AssistOps
-          </h1>
-        </div>
-
-        <nav className="space-y-1">
-          {sections.map((section) => (
-            <button
-              key={section}
-              className={`w-full rounded-md px-3 py-2 text-left text-sm font-medium transition ${
-                selectedCategory === section
-                  ? "bg-[#0f9b8e] text-white shadow-sm"
-                  : "text-[#c6d6de] hover:bg-[#12324a] hover:text-white"
-              }`}
-              onClick={() => setSelectedCategory(section)}
-              type="button"
-            >
-              {section}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <section className="flex flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-[#d3e2df] bg-white px-8">
+    <main className="min-h-screen bg-[#eef4f3]">
+      <section className="flex min-h-screen flex-col">
+        <header className="flex h-16 items-center justify-between border-b border-[#d3e2df] bg-white px-6 sm:px-8">
           <div>
             <p className="text-xs font-semibold uppercase text-[#0f9b8e]">
-              {selectedCategory}
+              MICAS
             </p>
             <h2 className="text-sm font-semibold text-[#07192f]">
-              Agent workspace
+              AssistOps
             </h2>
           </div>
 
@@ -156,6 +128,23 @@ export default function Home() {
             <h1 className="text-4xl font-semibold text-[#07192f]">
               What can I help with?
             </h1>
+
+            <div className="mx-auto mt-6 flex w-fit rounded-full border border-[#c6d9d5] bg-white p-1 shadow-sm shadow-[#0b2f4a]/5">
+              {sections.map((section) => (
+                <button
+                  key={section}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    selectedCategory === section
+                      ? "bg-[#0f9b8e] text-white shadow-sm"
+                      : "text-[#516a73] hover:bg-[#e8f7f5] hover:text-[#08766d]"
+                  }`}
+                  onClick={() => setSelectedCategory(section)}
+                  type="button"
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
 
             <div className="mx-auto mt-7 flex h-16 w-full max-w-3xl items-center gap-2 rounded-full border border-[#c6d9d5] bg-white px-3 py-2 text-left shadow-sm shadow-[#0b2f4a]/5 focus-within:border-[#0f9b8e]">
               <input
