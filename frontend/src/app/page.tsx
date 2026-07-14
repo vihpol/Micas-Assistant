@@ -129,21 +129,24 @@ export default function Home() {
               What can I help with?
             </h1>
 
-            <div className="mx-auto mt-6 flex w-fit rounded-full border border-[#c6d9d5] bg-white p-1 shadow-sm shadow-[#0b2f4a]/5">
-              {sections.map((section) => (
-                <button
-                  key={section}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                    selectedCategory === section
-                      ? "bg-[#0f9b8e] text-white shadow-sm"
-                      : "text-[#516a73] hover:bg-[#e8f7f5] hover:text-[#08766d]"
-                  }`}
-                  onClick={() => setSelectedCategory(section)}
-                  type="button"
-                >
-                  {section}
-                </button>
-              ))}
+            <div className="mx-auto mt-6 flex w-fit items-center gap-3 rounded-full border border-[#c6d9d5] bg-white px-4 py-2 shadow-sm shadow-[#0b2f4a]/5">
+              <span className="text-xs font-semibold uppercase text-[#0f9b8e]">
+                Team
+              </span>
+              <select
+                aria-label="Select team"
+                className="bg-transparent pr-8 text-sm font-semibold text-[#07192f] outline-none"
+                onChange={(event) =>
+                  setSelectedCategory(event.target.value as Category)
+                }
+                value={selectedCategory}
+              >
+                {sections.map((section) => (
+                  <option key={section} value={section}>
+                    {section}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="mx-auto mt-7 flex h-16 w-full max-w-3xl items-center gap-2 rounded-full border border-[#c6d9d5] bg-white px-3 py-2 text-left shadow-sm shadow-[#0b2f4a]/5 focus-within:border-[#0f9b8e]">
