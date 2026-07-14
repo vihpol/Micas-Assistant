@@ -157,33 +157,33 @@ export default function Home() {
               What can I help with?
             </h1>
 
-            <div className="mt-7 rounded-lg border border-[#c6d9d5] bg-white p-3 text-left shadow-sm shadow-[#0b2f4a]/5">
-              <textarea
+            <div className="mx-auto mt-7 flex h-16 w-full max-w-3xl items-center gap-2 rounded-full border border-[#c6d9d5] bg-white px-3 py-2 text-left shadow-sm shadow-[#0b2f4a]/5 focus-within:border-[#0f9b8e]">
+              <input
                 aria-label="Assistant request"
-                className="min-h-28 w-full resize-none rounded-md border border-transparent px-5 py-4 text-lg text-[#07192f] outline-none placeholder:text-[#8aa1a9] focus:border-[#0f9b8e]"
+                className="h-full min-w-0 flex-1 rounded-full border border-transparent bg-transparent px-5 text-lg text-[#07192f] outline-none placeholder:text-[#8aa1a9]"
                 onChange={(event) => setRequestText(event.target.value)}
                 onKeyDown={(event) => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  if (event.key === "Enter") {
                     void runAgents();
                   }
                 }}
-                placeholder={`Ask ${selectedCategory} agents to help with a workflow...`}
+                placeholder="Ask MICAS anything..."
+                type="search"
                 value={requestText}
               />
+              <button
+                className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#0f9b8e] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#08766d] disabled:cursor-not-allowed disabled:bg-[#8aa1a9]"
+                disabled={loading || !requestText.trim()}
+                onClick={() => void runAgents()}
+                type="button"
+              >
+                {loading ? "Running..." : "Run AI Agents"}
+              </button>
             </div>
 
             {error ? (
               <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
             ) : null}
-
-            <button
-              className="mt-5 inline-flex min-w-36 items-center justify-center rounded-md bg-[#0f9b8e] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#08766d] disabled:cursor-not-allowed disabled:bg-[#8aa1a9]"
-              disabled={loading || !requestText.trim()}
-              onClick={() => void runAgents()}
-              type="button"
-            >
-              {loading ? "Running..." : "Run AI Agents"}
-            </button>
           </div>
 
           {result ? (
