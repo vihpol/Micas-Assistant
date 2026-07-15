@@ -169,7 +169,7 @@ export default function Home() {
                 onClick={() => void runAgents()}
                 type="button"
               >
-                {loading ? "Analyzing..." : "Generate Plan"}
+                {loading ? "Analyzing..." : "Generate"}
               </button>
             </div>
 
