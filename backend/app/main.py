@@ -36,6 +36,15 @@ class AnalyzeResponse(BaseModel):
     agent_trace: list[AgentTraceItem]
 
 
+class GeminiAnswerRequest(BaseModel):
+    query: str
+
+
+class GeminiAnswerResponse(BaseModel):
+    answer: str
+    model: str
+
+
 app = FastAPI(title="micas-assistops API")
 
 app.add_middleware(
@@ -165,6 +174,68 @@ def _extract_response_text(data: dict) -> str:
                 output_parts.append(text)
 
     return " ".join(output_parts).strip()
+
+
+def _extract_gemini_text(data: dict) -> str:
+    text_parts = []
+
+    for candidate in data.get("candidates", []):
+        content = candidate.get("content", {})
+        for part in content.get("parts", []):
+            text = part.get("text")
+            if isinstance(text, str):
+                text_parts.append(text)
+
+    return "\n".join(text_parts).strip()
+
+
+def _call_gemini(query: str) -> GeminiAnswerResponse:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Gemini is not configured. Add GEMINI_API_KEY on the backend.",
+        )
+
+    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    prompt = (
+        "Answer the search query like a concise search assistant. "
+        "Keep it useful, neutral, and under 160 words. "
+        "If the query asks for something current or factual, say that the user "
+        "should verify details in the Google results shown on the page.\n\n"
+        f"Search query: {query}"
+    )
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            },
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 240,
+        },
+    }
+    request_data = json.dumps(payload).encode("utf-8")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}"
+    )
+    http_request = urllib.request.Request(
+        url,
+        data=request_data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(http_request, timeout=30) as response:
+        response_data = json.loads(response.read().decode("utf-8"))
+
+    answer = _extract_gemini_text(response_data)
+    if not answer:
+        raise RuntimeError("Gemini returned an empty response")
+
+    return GeminiAnswerResponse(answer=answer, model=model)
 
 
 def _call_openai_agent(
@@ -312,4 +383,21 @@ def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(
             status_code=502,
             detail="OpenAI request failed. Check API quota, billing, and model access.",
+        ) from exc
+
+
+@app.post("/gemini-answer", response_model=GeminiAnswerResponse)
+def gemini_answer(payload: GeminiAnswerRequest) -> GeminiAnswerResponse:
+    query = payload.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Search query is required.")
+
+    try:
+        return _call_gemini(query)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Gemini request failed. Check API key, quota, and model access.",
         ) from exc
