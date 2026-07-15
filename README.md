@@ -1,6 +1,7 @@
-# micas-assistops
+# MICAS Internal Resource Hub
 
-Minimal full-stack internal dashboard scaffold.
+Minimal full-stack internal resource hub for department links, forms,
+announcements, search, and future AI assistance.
 
 ## Stack
 
@@ -16,7 +17,17 @@ Create an environment file:
 cp .env.example .env
 ```
 
-Optional: add your OpenAI API key to `.env`.
+Optional: add a Google Programmable Search Engine ID for embedded Google-style
+search. Without this value, the frontend uses a curated internal resource search
+so the hub still works immediately.
+
+```env
+NEXT_PUBLIC_GOOGLE_CSE_ID=your_engine_id_here
+```
+
+Optional: add your OpenAI API key for future AI-assisted answers. The current
+homepage is search-hub-first; the backend keeps `/analyze` available as an
+upgrade path.
 
 ```env
 OPENAI_API_KEY=your_api_key_here
@@ -33,6 +44,47 @@ docker compose up --build
 
 - Frontend: http://localhost:3000
 - Backend health: http://localhost:8000/health
+
+## MVP Features
+
+- Prominent central search bar
+- Google Programmable Search embed when `NEXT_PUBLIC_GOOGLE_CSE_ID` is set
+- Curated internal resource search fallback when no Google engine ID is set
+- Department resource areas for HR, Operations, and Marketing
+- Quick links for common workflows
+- Announcements
+- Feedback capture for missing pages or zero-result searches
+- Lightweight in-page adoption signals for recent searches and zero-result state
+
+## Google Programmable Search Setup
+
+1. Create a Programmable Search Engine in Google.
+2. Configure it to search the internal/public sites you want included.
+3. Copy the engine ID.
+4. Add it to `.env`:
+
+```env
+NEXT_PUBLIC_GOOGLE_CSE_ID=your_engine_id_here
+```
+
+5. Rebuild the frontend:
+
+```bash
+docker compose up --build
+```
+
+The embedded widget uses:
+
+```html
+<script async src="https://cse.google.com/cse.js?cx=YOUR_ENGINE_ID"></script>
+<div class="gcse-search"></div>
+```
+
+## Adoption Plan
+
+Start with the search hub, watch what people search for, improve the links and
+pages, then add AI only after repeated searches show where direct answers would
+save time.
 
 The frontend calls the backend through Next.js rewrites:
 
