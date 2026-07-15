@@ -196,7 +196,7 @@ def _call_gemini(query: str) -> GeminiAnswerResponse:
             "Gemini is not configured. Add GEMINI_API_KEY on the backend.",
         )
 
-    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
     prompt = (
         "Answer the search query like a concise search assistant. "
         "Keep it useful, neutral, and under 160 words. "

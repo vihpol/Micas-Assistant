@@ -28,7 +28,7 @@ Add a Gemini API key for the backend answer panel:
 
 ```env
 GEMINI_API_KEY=your_gemini_key_here
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
 Security note: never put `GEMINI_API_KEY` or `OPENAI_API_KEY` in frontend code or
