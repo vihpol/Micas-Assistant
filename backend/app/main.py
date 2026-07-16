@@ -228,7 +228,7 @@ def _call_gemini(query: str) -> GeminiAnswerResponse:
         method="POST",
     )
 
-    with urllib.request.urlopen(http_request, timeout=30) as response:
+    with urllib.request.urlopen(http_request, timeout=12) as response:
         response_data = json.loads(response.read().decode("utf-8"))
 
     answer = _extract_gemini_text(response_data)
@@ -396,8 +396,20 @@ def gemini_answer(payload: GeminiAnswerRequest) -> GeminiAnswerResponse:
         return _call_gemini(query)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except urllib.error.HTTPError as exc:
+        detail = "Gemini request failed. Check API key, quota, and model access."
+
+        try:
+            error_payload = json.loads(exc.read().decode("utf-8"))
+            message = error_payload.get("error", {}).get("message")
+            if isinstance(message, str) and message:
+                detail = f"Gemini error {exc.code}: {message}"
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            detail = f"Gemini error {exc.code}: {exc.reason}"
+
+        raise HTTPException(status_code=502, detail=detail) from exc
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
         raise HTTPException(
             status_code=502,
-            detail="Gemini request failed. Check API key, quota, and model access.",
+            detail="Gemini request timed out or could not be reached. Try again.",
         ) from exc
